@@ -1,70 +1,77 @@
-# System Design Plan: Agentic Company Memory
+# System Design Plan: Personal Long-Term Memory
 
 ## 1. Product Goal
 
-Build a company memory system where users can connect sources such as Slack, email, files, databases, ticketing systems, code repositories, and external APIs. Always-running agents ingest these sources, construct a typed knowledge graph, and ask humans for clarification when the system detects uncertain decisions, missing rationale, conflicting claims, or incomplete ownership.
+Build a long-term personal memory system where a user can connect notes, files, email, calendar, browser/bookmarks, chats, tasks, photos, code, databases, and external APIs. Always-running agents ingest these sources, construct a typed and evidence-backed personal knowledge graph, and ask the user for clarification when the system detects uncertain memories, changed preferences, unresolved commitments, or missing context.
 
-The system should not claim to know everything. It should continuously maintain what is known, what is inferred, what is contradicted, and what needs human confirmation.
+The system should not pretend to know the user perfectly. It should maintain what is remembered, what is inferred, what is sensitive, what is stale, and what needs confirmation.
 
 Core product promise:
 
 ```text
-A universal memory for teams that reads the workstream,
-builds an evidence-backed knowledge graph,
-and asks the right humans when important context is missing.
+A personal memory layer that remembers what matters,
+shows why it remembers it,
+asks before turning uncertainty into memory,
+and lets the user edit or forget anything.
 ```
 
 ## 2. Core Design Principle
 
-The system must separate four states of knowledge:
+The system must separate six memory states:
 
 ```text
 Observed
-The system has direct source evidence.
+The system has direct evidence from a source.
 
 Inferred
 The system sees a likely pattern but lacks direct confirmation.
 
-Disputed
-The system has conflicting evidence or competing interpretations.
+Confirmed
+The user explicitly accepted or corrected the memory.
 
-Unknown
-The system has detected a gap and needs human input.
+Sensitive
+The memory can be used only under stricter rules.
+
+Stale
+The memory may no longer be true and needs revalidation.
+
+Forgotten
+The memory has been removed from active use by user request or policy.
 ```
 
-This is the central behavior that makes the product trustworthy. Agents should escalate uncertainty into structured questions instead of converting weak signals into facts.
+This is the central trust model. Agents should turn uncertainty into questions instead of silently converting weak signals into durable personal facts.
 
 ## 3. High-Level Architecture
 
 ```text
-User / Admin
+User
     |
     v
-Connector Setup UI
+Source Setup UI
     |
     v
-Source Connectors
-Slack, Email, Drive, Notion, GitHub, Jira, Linear, DBs, APIs, Uploads
+Personal Source Connectors
+Notes, Files, Email, Calendar, Browser, Chats, Tasks, Photos, Code, DBs, APIs
     |
     v
 Ingestion Pipeline
-Normalize -> Permission Tag -> Chunk -> Store Raw -> Embed
+Normalize -> Sensitivity Tag -> Chunk -> Store Raw -> Embed
     |
     v
-Knowledge Construction
+Memory Construction
 Node Allocation -> Assertion Proposal -> Evidence Linking -> Validation
     |
     v
 Uncertainty Detection
-Decision Gaps -> Contradictions -> Missing Owners -> Stale Claims
+Memory Gaps -> Changed Preferences -> Open Loops -> Stale Claims
     |
     v
-Human Ask-Back Loop
-Question Routing -> Human Confirmation -> Graph Patch -> Audit Event
+Personal Ask-Back Loop
+Question Routing -> User Confirmation -> Graph Patch -> Audit Event
     |
     v
-Company Memory Graph
-Typed Nodes + Evidence + Versions + Permissions + Audit Trail
+Personal Memory Graph
+Typed Nodes + Evidence + Versions + Scopes + Forgetting + Audit Trail
     |
     v
 Agentic Retrieval Layer
@@ -72,7 +79,7 @@ Query Planning -> Hybrid Retrieval -> Evidence Expansion -> Answer Verification
     |
     v
 Interfaces
-Search, Q&A, Graph Explorer, Decision Log, Onboarding, Agent Context API
+Search, Q&A, Timeline, Memory Inbox, Project Pages, Assistant Context API
 
 Sidecar:
 Agent Private Memory Store
@@ -81,33 +88,37 @@ Per-agent run history, feedback, heuristics, failures, and calibration data
 
 ## 4. User-Facing Source Connection Layer
 
-Users need a simple way to dump or connect company knowledge sources.
+Users need a simple way to connect or dump personal context.
 
 ### 4.1 Source Types
 
 Initial connector categories:
 
-- File upload: PDFs, Markdown, text files, CSVs, docs exports.
-- Cloud files: Google Drive, OneDrive, Dropbox.
-- Team communication: Slack, Microsoft Teams, Discord for smaller teams.
-- Email: Gmail, Outlook, shared support inboxes.
-- Project management: Linear, Jira, Asana, Trello.
-- Code and engineering: GitHub, GitLab, Bitbucket, CI logs.
-- Documentation: Notion, Confluence, Coda.
-- Databases: Postgres, MySQL, SQLite, BigQuery, Snowflake.
-- External APIs: customer tools, analytics APIs, CRM APIs, internal services.
-- Manual input: notes, decisions, meeting summaries, pasted text.
+- Manual memories: typed notes, pasted text, quick capture.
+- Local files: PDFs, Markdown, text files, CSVs, images, exported docs.
+- Cloud files: Google Drive, iCloud Drive, OneDrive, Dropbox.
+- Notes: Apple Notes exports, Notion, Obsidian, Logseq, Roam, Evernote.
+- Email: Gmail, Outlook, local mail exports.
+- Calendar: Google Calendar, Apple Calendar, Outlook Calendar.
+- Browser and bookmarks: history exports, bookmarks, reading lists.
+- Chats: personal chat exports, AI chat exports, selected messaging threads.
+- Tasks: Todoist, Things, Linear personal workspace, GitHub issues.
+- Code and projects: GitHub repos, local project folders, commit history.
+- Photos and media metadata: albums, locations, timestamps, captions.
+- Structured data: SQLite, Postgres, CSVs, personal spreadsheets.
+- External APIs: fitness, finance, travel, CRM-like personal tools, custom APIs.
 
 ### 4.2 Connector Setup UX
 
 The setup flow should ask:
 
 - What source do you want to connect?
-- Which workspace, folder, channel, repo, table, or API path should be included?
-- Who can access knowledge derived from this source?
-- Should the connector backfill history or only read new updates?
-- Should the source be watched continuously?
-- Which data is sensitive and should never be used for broad answers?
+- Which folders, labels, accounts, calendars, notebooks, or API paths should be included?
+- Should this source be continuously synced or imported once?
+- Can this source be used proactively by the assistant, only for search, or only when explicitly asked?
+- Is this source sensitive?
+- How long should raw data and derived memories be retained?
+- Should the system ask before storing long-term memories from this source?
 
 Each connector should produce a `SourceConnection` record:
 
@@ -115,21 +126,23 @@ Each connector should produce a `SourceConnection` record:
 type SourceConnection = {
   id: string;
   type:
-    | "slack"
-    | "email"
+    | "manual"
     | "file_upload"
     | "cloud_drive"
-    | "github"
-    | "linear"
-    | "jira"
-    | "notion"
+    | "notes"
+    | "email"
+    | "calendar"
+    | "browser"
+    | "chat_export"
+    | "tasks"
+    | "code"
+    | "photos"
     | "database"
     | "external_api";
   displayName: string;
   ownerUserId: string;
-  organizationId: string;
   syncMode: "one_time" | "scheduled" | "webhook" | "continuous";
-  permissionPolicyId: string;
+  memoryScopePolicyId: string;
   retentionPolicyId: string;
   status: "active" | "paused" | "error" | "revoked";
   lastSyncedAt?: string;
@@ -144,8 +157,8 @@ Each connector should follow the same runtime contract.
 ```text
 Fetch raw events/documents
 -> Normalize into source records
--> Apply permissions and sensitivity tags
--> Store immutable raw snapshot
+-> Apply sensitivity and memory-scope tags
+-> Store immutable raw snapshot when allowed
 -> Emit ingestion jobs
 ```
 
@@ -165,19 +178,23 @@ type SourceRecord = {
   updatedAtSource?: string;
   fetchedAt: string;
   contentType:
-    | "message"
-    | "thread"
+    | "note"
     | "email"
+    | "calendar_event"
+    | "chat_message"
+    | "thread"
     | "document"
-    | "ticket"
-    | "pull_request"
+    | "task"
+    | "bookmark"
+    | "web_history"
+    | "photo_metadata"
+    | "code_reference"
     | "database_row"
     | "api_response"
-    | "meeting_note"
     | "file";
-  rawObjectRef: string;
+  rawObjectRef?: string;
   textRef?: string;
-  permissionTags: string[];
+  memoryScopeTags: string[];
   sensitivityTags: string[];
   metadata: Record<string, unknown>;
 };
@@ -188,105 +205,115 @@ type SourceRecord = {
 Every connector must support:
 
 - Incremental sync.
-- Backfill with limits.
-- Retry and rate-limit handling.
-- Source deletion/revocation handling.
-- Permission propagation.
-- Raw snapshot retention policy.
+- One-time import.
+- Source revocation.
+- Retention policy.
+- Sensitivity tagging.
 - Stable external IDs.
-- Audit logs for sync activity.
+- Raw snapshot controls.
+- Sync audit logs.
+- Deletion and forgetting propagation.
 
-## 6. Knowledge Graph Model
+## 6. Personal Memory Graph Model
 
-The graph should follow the model from `AGENTIC_KNOWLEDGE_GRAPH_SPEC.md`, with company-memory-specific node types.
+The graph should follow the model from `AGENTIC_KNOWLEDGE_GRAPH_SPEC.md`, with personal-memory-specific node types.
 
 ### 6.1 Core Node Types
 
 - `Person`
-- `Team`
+- `Relationship`
+- `Place`
 - `Project`
-- `Customer`
-- `Source`
+- `Goal`
+- `Preference`
+- `Habit`
+- `Event`
+- `Memory`
+- `Decision`
+- `OpenLoop`
+- `Question`
+- `Reminder`
 - `Document`
 - `Message`
-- `Thread`
-- `Meeting`
-- `Ticket`
-- `PullRequest`
-- `CodeModule`
-- `Database`
-- `Table`
-- `Metric`
-- `Decision`
-- `DecisionGap`
-- `Claim`
-- `Question`
+- `Email`
+- `CalendarEvent`
 - `Task`
-- `Incident`
-- `Policy`
-- `API`
+- `Bookmark`
+- `Topic`
+- `HealthRecord`
+- `FinanceRecord`
+- `TravelPlan`
+- `CodeProject`
+- `Source`
 
 ### 6.2 Core Predicates
 
 - `mentions`
 - `authored_by`
 - `participated_in`
-- `owned_by`
-- `belongs_to`
-- `depends_on`
+- `related_to`
+- `prefers`
+- `avoids`
+- `likes`
+- `dislikes`
+- `owns`
+- `working_on`
+- `committed_to`
+- `decided`
+- `supersedes`
 - `supports`
 - `contradicts`
-- `supersedes`
-- `implements`
-- `requested_by`
-- `caused_by`
-- `resolved_by`
-- `blocks`
-- `decided_in`
+- `depends_on`
+- `happened_at`
+- `scheduled_for`
+- `last_confirmed_by`
 - `needs_confirmation_from`
+- `should_remind_at`
 - `has_evidence`
 
-### 6.3 Company Memory Assertion Example
+### 6.3 Personal Memory Assertion Example
 
 ```ts
 type Assertion = {
   id: "assertion_123";
-  subjectNodeId: "project_billing_v2";
-  predicate: "owned_by";
-  objectNodeId: "person_alice";
+  subjectNodeId: "user";
+  predicate: "working_on";
+  objectNodeId: "project_open_memory";
   evidenceIds: [
-    "evidence_slack_thread_456",
-    "evidence_linear_issue_789"
+    "evidence_note_456",
+    "evidence_git_commit_789"
   ];
-  confidence: 0.78;
-  status: "accepted";
-  createdBy: "agent_node_allocator_v1";
-  acceptedBy: "validator_policy_v1";
-  validFrom: "2026-04-30T00:00:00Z";
-  currentVersion: "v3";
-  createdAt: "2026-04-30T10:30:00Z";
-  updatedAt: "2026-04-30T10:30:00Z";
+  confidence: 0.84;
+  status: "confirmed";
+  memoryState: "active";
+  memoryScope: "available_to_assistant";
+  createdBy: "agent_assertion_v1";
+  acceptedBy: "user";
+  validFrom: "2026-05-05T00:00:00Z";
+  currentVersion: "v2";
+  createdAt: "2026-05-05T10:30:00Z";
+  updatedAt: "2026-05-05T10:30:00Z";
 };
 ```
 
-## 7. Human Ask-Back Loop
+## 7. Personal Ask-Back Loop
 
-The human ask-back loop is a first-class system component, not a fallback.
+The ask-back loop is a first-class system component. Personal memory quality depends on asking the user lightweight questions at the right time.
 
-### 7.1 When the System Should Ask Humans
+### 7.1 When the System Should Ask
 
 Agents should create questions when they detect:
 
-- A likely decision without explicit confirmation.
-- A project direction change without rationale.
-- A merged PR that appears to implement an undocumented decision.
-- A stale owner or ambiguous ownership.
-- Conflicting claims from different sources.
-- A customer commitment mentioned in conversation but not in the roadmap.
-- A recurring topic with no canonical document.
-- A task/ticket closed without linked resolution.
-- A policy change communicated informally.
-- A high-impact claim with weak evidence.
+- A possible long-term preference.
+- A changed preference or contradiction.
+- A repeated topic that may be an active project.
+- A commitment or promise that lacks a reminder.
+- A decision without rationale.
+- A goal that appears abandoned or stale.
+- A person/relationship that needs disambiguation.
+- A memory that may be sensitive.
+- A source that should not be used proactively.
+- A pattern that affects future assistant behavior.
 
 ### 7.2 Question Node
 
@@ -295,17 +322,18 @@ type QuestionNode = {
   id: string;
   type: "Question";
   questionKind:
-    | "confirm_decision"
+    | "confirm_memory"
+    | "confirm_preference"
     | "clarify_rationale"
-    | "confirm_owner"
+    | "confirm_commitment"
     | "resolve_contradiction"
-    | "classify_source"
-    | "approve_schema_change"
+    | "classify_sensitivity"
+    | "set_memory_scope"
+    | "forget_or_archive"
     | "fill_missing_context";
   prompt: string;
   relatedNodeIds: string[];
   evidenceIds: string[];
-  suggestedRespondentIds: string[];
   priority: "low" | "medium" | "high" | "critical";
   status: "open" | "answered" | "dismissed" | "expired";
   dueAt?: string;
@@ -316,73 +344,76 @@ type QuestionNode = {
 
 ### 7.3 Ask-Back Examples
 
-Decision confirmation:
+Preference confirmation:
 
 ```text
-It looks like the billing migration plan changed after this Slack thread and PR #341.
-Was the final decision to move invoices to the new ledger service?
+You often ask for concise answers. Should I remember that as a general preference?
 ```
 
-Ownership confirmation:
+Commitment confirmation:
 
 ```text
-The system sees Alice, Ravi, and Maya all mentioned as owners of the onboarding flow.
-Who is the current owner?
+This email sounds like you promised to send a draft by Friday. Should I track that?
 ```
 
 Rationale clarification:
 
 ```text
-The old API gateway plan appears to have been abandoned.
-What was the main reason?
+You decided not to pursue the recruiting tool idea. What was the main reason?
+```
+
+Sensitivity classification:
+
+```text
+This note looks health-related. Should it be available to your assistant, search-only, or private?
 ```
 
 Contradiction resolution:
 
 ```text
-Notion says the beta launches in May, but the latest Linear roadmap says July.
-Which one is current?
+Earlier you preferred morning workouts, but recent notes say evenings work better.
+Which should I remember as current?
 ```
 
 ### 7.4 Human Answer Handling
 
-Human answers should become graph patches, not loose comments.
+User answers should become graph patches, not loose comments.
 
 ```text
-Human answers question
+User answers question
 -> System creates evidence from answer
 -> Agent proposes graph patch
--> Validator checks permissions and schema
--> Accepted patch updates graph
+-> Validator checks schema, scope, and sensitivity
+-> Accepted patch updates memory graph
 -> Question node is marked answered
--> Audit event records who answered and what changed
+-> Audit event records what changed
 ```
 
 ## 8. Agent System
 
 ### 8.1 Connector Agents
 
-Maintain syncs with external systems.
+Maintain syncs with personal sources.
 
 Responsibilities:
 
 - Fetch updates.
 - Normalize records.
-- Respect permissions.
+- Apply source scope and sensitivity policy.
 - Detect connector errors.
 - Emit ingestion jobs.
 
 ### 8.2 Ingestion Agents
 
-Convert source records into chunks, evidence, and candidate nodes.
+Convert source records into chunks, evidence, and candidate memory nodes.
 
 Responsibilities:
 
 - Chunk text.
-- Extract entities.
-- Extract candidate claims.
-- Create source/document/message/ticket nodes.
+- Extract people, projects, goals, dates, tasks, and preferences.
+- Create source/document/message/event/task nodes.
 - Generate embeddings.
+- Mark sensitive candidates conservatively.
 
 ### 8.3 Node Allocation Agents
 
@@ -391,20 +422,22 @@ Decide whether extracted objects should create new nodes or attach to existing o
 Responsibilities:
 
 - Entity resolution.
+- Person and place disambiguation.
 - Alias detection.
-- Deduplication.
+- Duplicate detection.
 - Canonical node selection.
 
 ### 8.4 Assertion Agents
 
-Create typed relationship proposals.
+Create typed memory proposals.
 
 Responsibilities:
 
 - Propose assertions.
 - Attach evidence.
 - Estimate confidence.
-- Mark weak claims as inferred, not observed.
+- Mark weak memories as inferred, not confirmed.
+- Avoid converting private source content into broad assistant context without policy approval.
 
 ### 8.5 Uncertainty Agents
 
@@ -412,74 +445,86 @@ Detect ambiguity and missing context.
 
 Responsibilities:
 
-- Create `DecisionGap` nodes.
 - Create `Question` nodes.
-- Route questions to likely respondents.
+- Create `OpenLoop` nodes.
+- Detect possible preferences.
+- Detect unresolved commitments.
 - Escalate high-impact uncertainty.
 
 ### 8.6 Contradiction Agents
 
-Detect conflicting knowledge.
+Detect conflicting memories.
 
 Responsibilities:
 
-- Compare claims across sources.
-- Detect stale docs.
-- Identify conflicting roadmaps, owners, policies, and commitments.
-- Request human resolution when needed.
+- Compare preferences across time.
+- Detect stale goals.
+- Identify conflicting plans, commitments, and relationships.
+- Ask the user to resolve meaningful contradictions.
 
 ### 8.7 Freshness Agents
 
-Maintain time-sensitive knowledge.
+Maintain time-sensitive memory.
 
 Responsibilities:
 
-- Revalidate old claims.
-- Mark stale ownership.
-- Detect abandoned projects.
-- Reopen questions when evidence changes.
+- Revalidate old preferences.
+- Mark stale projects and goals.
+- Detect abandoned commitments.
+- Reopen questions when new evidence changes memory state.
 
-### 8.8 Projection Agents
+### 8.8 Forgetting Agents
 
-Turn graph state into useful human-readable outputs.
+Enforce user-controlled forgetting.
+
+Responsibilities:
+
+- Apply delete, archive, and private-mode requests.
+- Remove or disable derived assertions when evidence is forgotten.
+- Maintain tombstones when needed for audit without retaining sensitive content.
+- Ensure forgotten memories are not used in retrieval or assistant context.
+
+### 8.9 Projection Agents
+
+Turn graph state into useful personal views.
 
 Responsibilities:
 
 - Generate project memory pages.
-- Generate decision logs.
-- Generate onboarding briefs.
-- Generate weekly change summaries.
-- Generate "what changed?" reports.
+- Generate decision histories.
+- Generate relationship briefs.
+- Generate weekly reflection summaries.
+- Generate "what changed in my life/projects?" reports.
 
-### 8.9 Retrieval Agents
+### 8.10 Retrieval Agents
 
-Retrieve evidence-backed graph state for users and downstream agents.
+Retrieve evidence-backed memory state for the user and downstream assistants.
 
 Responsibilities:
 
 - Classify query intent.
 - Choose retrieval strategies.
 - Run graph, vector, lexical, structured, and audit-history lookups.
-- Expand candidate results into evidence-backed knowledge packages.
-- Apply permission filters before and after retrieval.
-- Rank accepted, human-confirmed, fresh, and well-evidenced knowledge above weak matches.
-- Surface disputed, stale, inferred, and unknown states in the answer.
+- Expand candidate results into evidence-backed memory packages.
+- Apply memory-scope and sensitivity filters before and after retrieval.
+- Rank confirmed, fresh, and well-evidenced memories above weak matches.
+- Surface stale, inferred, sensitive, forgotten, and unknown states.
 - Create new `Question` nodes when retrieval reveals missing context.
 
-Retrieval agents should not behave like plain RAG. They should retrieve graph state, evidence, uncertainty, and audit history.
+Retrieval agents should not behave like plain RAG. They should retrieve memory graph state, evidence, uncertainty, and audit history.
 
 ## 9. Agent Private Memory
 
-Each agent should have its own private operational memory that improves the agent over time. This memory is separate from company memory.
+Each agent should have its own private operational memory that improves the agent over time. This memory is separate from personal memory.
 
 Important boundary:
 
 ```text
-Company memory stores organizational knowledge.
+Personal memory stores what the user wants remembered.
 Agent private memory stores how an agent learns to do its job better.
 ```
 
-Agent private memory should not be used as direct evidence for company facts. It can improve future behavior, routing, confidence calibration, and tool choice, but accepted company knowledge must still come from source evidence, human answers, and audited graph patches.
+Agent private memory should not be used as direct evidence for personal facts. It can improve future behavior, routing, confidence calibration, and tool choice, but accepted personal memories must still come from source evidence, user answers, and audited graph patches.
 
 ### 9.1 What Agent Private Memory Stores
 
@@ -489,20 +534,20 @@ Agent memory can store:
 - Successful and failed retrieval plans.
 - Connector-specific sync issues.
 - Extraction mistakes and corrections.
-- Human feedback on agent proposals.
+- User feedback on agent proposals.
 - Confidence calibration history.
 - Preferred chunking or parsing strategies for a source type.
 - Common duplicate-node patterns.
-- Which humans are responsive for certain question types.
+- Which question formats the user answers.
 - Tool latency, error rates, and reliability.
 - Prompt, model, schema, and policy versions used during prior runs.
 
 Agent memory should not store:
 
-- Unscoped private company facts as reusable truth.
-- Sensitive source content unless explicitly allowed by policy.
-- Evidence-free claims about the company.
-- Data from one organization that can influence another organization.
+- Sensitive personal facts as reusable truth.
+- Evidence-free claims about the user.
+- Raw private source content unless explicitly allowed.
+- Data from one user that can influence another user's memory.
 
 ### 9.2 Agent Memory Record
 
@@ -510,23 +555,23 @@ Agent memory should not store:
 type AgentMemoryRecord = {
   id: string;
   agentId: string;
-  organizationId: string;
+  userId: string;
   memoryKind:
     | "run_outcome"
-    | "human_feedback"
+    | "user_feedback"
     | "heuristic"
     | "failure_pattern"
     | "confidence_calibration"
     | "tool_performance"
-    | "routing_preference"
+    | "question_preference"
     | "schema_lesson";
   summary: string;
   sourceRunIds: string[];
   relatedPolicyIds: string[];
   scope:
     | "agent_only"
-    | "agent_type_within_org"
-    | "organization_agents"
+    | "agent_type_for_user"
+    | "user_agents"
     | "global_anonymized";
   sensitivity: "low" | "medium" | "high";
   expiresAt?: string;
@@ -543,7 +588,7 @@ Every important agent action should produce a run log. Agent memories are distil
 type AgentRun = {
   id: string;
   agentId: string;
-  organizationId: string;
+  userId: string;
   taskType: string;
   inputRefs: string[];
   outputPatchIds: string[];
@@ -565,7 +610,7 @@ type AgentRun = {
 ```text
 Agent performs task
 -> AgentRun is recorded
--> Validator/human accepts, edits, or rejects output
+-> Validator/user accepts, edits, or rejects output
 -> Feedback is attached to the run
 -> Memory distiller creates private agent memory
 -> Future runs use relevant private memories as behavioral hints
@@ -574,9 +619,9 @@ Agent performs task
 Example:
 
 ```text
-Node allocation agent repeatedly merges "Billing API" and "Billing Service" incorrectly.
-Human rejects the merge twice.
-Agent memory stores: in this organization, those labels usually refer to separate nodes.
+Node allocation agent repeatedly confuses "open-Memory" the repo with "personal memory" the concept.
+User rejects the merge twice.
+Agent memory stores: for this user, those should remain separate nodes.
 Future node allocation proposals become more conservative.
 ```
 
@@ -584,72 +629,65 @@ Future node allocation proposals become more conservative.
 
 Agent private memory must obey strict isolation rules:
 
-- It is not part of the company knowledge graph.
-- It cannot be cited as evidence for company assertions.
-- It should be scoped to one organization by default.
-- Cross-organization learning must be anonymized and stripped of source content.
+- It is not part of the personal memory graph.
+- It cannot be cited as evidence for personal memories.
+- It should be scoped to one user by default.
+- Cross-user learning must be anonymized and stripped of source content.
 - Sensitive memories should expire or require explicit retention.
-- Users should be able to inspect and delete agent memories for their organization.
+- Users should be able to inspect and delete agent memories.
 
-### 9.6 Agent Memory Uses
+## 10. Privacy, Scope, and Forgetting Model
 
-Agent private memory improves:
+Personal memory needs privacy and forgetting from day one.
 
-- Retrieval planning.
-- Confidence scoring.
-- Question routing.
-- Duplicate detection.
-- Connector reliability.
-- Chunking and extraction choices.
-- Schema proposal quality.
-- Patch acceptance rate.
-- Reduction of repeated mistakes.
+### 10.1 Memory Scopes
 
-## 10. Permission and Privacy Model
-
-This system will handle sensitive company data. Permissions must be part of the core architecture.
-
-### 10.1 Permission Propagation
-
-Every source record, evidence object, node, assertion, and generated summary should carry access constraints.
+Every source record, evidence object, node, assertion, and generated summary should carry a memory scope.
 
 ```text
-If a user cannot access the evidence,
-the system should not reveal knowledge derived only from that evidence.
+If a memory is not allowed for proactive assistant use,
+the system should not use it to personalize answers unless explicitly asked.
 ```
 
-### 10.2 Derived Knowledge Policy
+Suggested scopes:
 
-Derived knowledge is dangerous because it can leak private information indirectly.
+- `available_to_assistant`
+- `search_only`
+- `only_when_explicitly_asked`
+- `private_do_not_use`
+- `time_limited`
+- `forgotten`
 
-Example:
-
-```text
-Private executive email says Project X is being cancelled.
-The system must not answer broadly: "Project X is cancelled."
-```
-
-Policy options:
-
-- Strict: derived assertions inherit the most restrictive evidence permissions.
-- Blended: broad answers require at least one broadly accessible evidence item.
-- Redacted: answer that private evidence exists but do not reveal details.
-
-MVP should use strict inheritance.
-
-### 10.3 Sensitive Data Controls
+### 10.2 Sensitive Data Policy
 
 The system should detect and tag:
 
-- Secrets and API keys.
-- Personal information.
+- Health data.
 - Financial data.
 - Legal data.
-- HR data.
-- Security incidents.
-- Customer confidential information.
+- Identity documents.
+- Intimate relationships.
+- Authentication secrets.
+- Private communications.
+- Location history.
+- Personal photos and media.
 
-Sensitive assertions should require stricter review and narrower visibility.
+Sensitive memories should default to narrow use and require explicit confirmation before proactive use.
+
+### 10.3 Forgetting Policy
+
+Forgetting must be user-controlled and technically enforced.
+
+Forgetting options:
+
+- Forget this memory.
+- Forget this source.
+- Archive but do not use proactively.
+- Keep for search only.
+- Delete raw evidence and derived memories.
+- Expire after a date.
+
+When evidence is deleted, derived assertions should be revalidated, downgraded, or forgotten depending on policy.
 
 ## 11. Data Storage Plan
 
@@ -659,22 +697,22 @@ Use the simplest stack that still proves the architecture:
 
 ```text
 PostgreSQL
-Nodes, assertions, evidence metadata, patches, audit events, permissions.
+Nodes, assertions, evidence metadata, patches, audit events, scopes, retention rules.
 
 pgvector
 Embeddings for chunks, evidence, node summaries, and questions.
 
 Local/object storage
-Raw source snapshots and extracted text.
+Raw source snapshots and extracted text, only when retention policy allows it.
 
 Background job queue
-Connector sync, ingestion jobs, agent jobs, projection jobs.
+Connector sync, ingestion jobs, agent jobs, projection jobs, forgetting jobs.
 
 Agent private memory tables
 Agent runs, feedback, calibration records, and private operational memories.
 
 Markdown or simple web views
-Human-readable projections.
+Human-readable personal memory projections.
 ```
 
 ### 11.2 Later Storage
@@ -682,65 +720,62 @@ Human-readable projections.
 Add specialized infrastructure when needed:
 
 ```text
-Neo4j
+Graph database
 For deeper graph traversal and graph analytics.
 
-OpenSearch
+Search index
 For stronger full-text search.
 
-S3-compatible object storage
+Encrypted object storage
 For production raw artifact storage.
 
-Kafka / event stream
+Event stream
 For high-volume connector and agent events.
 
-Warehouse connector
-For analytics over graph evolution.
+Local-first encrypted store
+For privacy-sensitive personal deployments.
 ```
 
 ## 12. Agentic Retrieval Design
 
-Retrieval is also an agentic process. The system should not simply run vector search and generate an answer from similar chunks. It should plan the query, select tools, retrieve graph state, expand evidence, check permissions, account for uncertainty, and produce an auditable answer.
+Retrieval is also an agentic process. The system should not simply run vector search and generate an answer from similar chunks. It should plan the query, select tools, retrieve memory graph state, expand evidence, check scopes, account for uncertainty, and produce an auditable answer.
 
 Core retrieval principle:
 
 ```text
 RAG retrieves text chunks.
-This system retrieves evidence-backed graph state.
+This system retrieves evidence-backed personal memory state.
 ```
 
 ### 12.1 Retrieval Flow
 
 ```text
-User or agent asks a question
+User or assistant asks a question
 -> Query planner classifies intent
--> Permission scope is computed
+-> Memory scope is computed
 -> Retrieval agent chooses strategies
 -> Graph/vector/lexical/structured/audit lookups run
 -> Candidate nodes and assertions are merged
 -> Evidence and source snippets are expanded
--> Results are ranked by trust, freshness, confidence, and relevance
+-> Results are ranked by confirmation, freshness, sensitivity, and relevance
 -> Answer verifier checks support and uncertainty
--> Response includes answer, evidence, confidence, and open questions
+-> Response includes answer, evidence, confidence, memory state, and open questions
 ```
 
 ### 12.2 Query Planner
-
-The query planner decides what kind of question is being asked and which retrieval paths are needed.
 
 ```ts
 type RetrievalPlan = {
   query: string;
   userId: string;
-  organizationId: string;
   intent:
     | "fact_lookup"
     | "why_question"
     | "decision_history"
-    | "owner_lookup"
-    | "status_summary"
-    | "contradiction_check"
-    | "open_questions"
+    | "preference_lookup"
+    | "relationship_lookup"
+    | "project_summary"
+    | "open_loops"
     | "timeline"
     | "structured_data_query"
     | "similar_context_search";
@@ -751,7 +786,7 @@ type RetrievalPlan = {
     | "structured"
     | "audit_history"
   >;
-  permissionScope: string[];
+  allowedMemoryScopes: string[];
   requiredEvidence: boolean;
   includeUncertainty: boolean;
   freshnessRequirement?: "current" | "historical" | "any";
@@ -761,59 +796,28 @@ type RetrievalPlan = {
 Example strategy choices:
 
 ```text
-"Who owns billing?"
--> graph first, evidence second
+"What was I thinking about open-Memory last month?"
+-> timeline + vector + project graph
 
-"Why did we choose ledger?"
--> decision graph + evidence + audit history
+"Why did I drop the recruiting tool idea?"
+-> decision history + evidence + audit history
 
-"What changed last week?"
--> audit history + temporal graph traversal
+"What do I prefer for writing style?"
+-> preference graph + user confirmations
 
-"Find discussions similar to this bug"
--> vector search + graph expansion
+"What did I promise Ravi?"
+-> people graph + email/chat/task retrieval
 
-"Which claims are disputed?"
--> graph query over contradiction assertions
-
-"Show current billing metrics"
--> structured data binding + graph context
+"What projects am I neglecting?"
+-> project graph + freshness + task/calendar signals
 ```
 
-### 12.3 Hybrid Retrieval
-
-The retrieval agent should combine multiple retrieval modes.
-
-Graph retrieval:
-
-- Finds known nodes and assertions.
-- Traverses relationships.
-- Follows ownership, decision, dependency, contradiction, and supersession edges.
-
-Vector retrieval:
-
-- Finds semantically similar chunks, evidence, node summaries, and prior questions.
-- Handles fuzzy language, synonyms, and incomplete user wording.
-
-Lexical retrieval:
-
-- Finds exact terms, names, IDs, PR numbers, acronyms, customer names, and code symbols.
-
-Structured retrieval:
-
-- Queries RDBMS or API bindings for metrics, records, status, and tabular data.
-
-Audit retrieval:
-
-- Reconstructs what changed, when, by whom, and why.
-- Supports temporal questions and historical belief state.
-
-### 12.4 Knowledge Package
+### 12.3 Knowledge Package
 
 Retrieval should return a structured package, not a loose list of chunks.
 
 ```ts
-type KnowledgePackage = {
+type PersonalMemoryPackage = {
   query: string;
   plan: RetrievalPlan;
   nodes: Node[];
@@ -825,67 +829,67 @@ type KnowledgePackage = {
     level: "low" | "medium" | "high";
     reasons: string[];
   };
-  permissionSummary: {
-    appliedPolicyIds: string[];
+  scopeSummary: {
+    appliedScopeIds: string[];
     redactions: string[];
   };
   uncertainty: {
     openQuestions: QuestionNode[];
-    disputedAssertions: Assertion[];
     staleAssertions: Assertion[];
     inferredAssertions: Assertion[];
+    sensitiveAssertions: Assertion[];
   };
 };
 ```
 
-### 12.5 Ranking Policy
+### 12.4 Ranking Policy
 
-The answer should prefer stronger knowledge over weaker matches.
+The answer should prefer stronger memory over weaker matches.
 
 Ranking order:
 
 ```text
-Accepted assertions with strong evidence
-> human-confirmed answers
-> authoritative docs
+User-confirmed memories
+> accepted assertions with strong evidence
 > recent source excerpts
-> inferred claims
+> repeated observed patterns
+> inferred memories
 > weak semantic matches
 ```
 
 Ranking signals:
 
 - Relevance to query.
-- Source trust.
-- Evidence count and independence.
-- Human confirmation.
+- User confirmation.
+- Evidence count.
 - Freshness.
-- Permission compatibility.
+- Memory scope.
+- Sensitivity.
 - Assertion status.
 - Contradiction status.
 - Agent confidence.
 
-### 12.6 Retrieval-Time Ask-Back
+### 12.5 Retrieval-Time Ask-Back
 
 Retrieval may reveal that the system cannot answer safely. In that case, it should create a question instead of inventing an answer.
 
 Examples:
 
 ```text
-User asks: "Why was the launch delayed?"
-System finds: roadmap changed, ticket dates moved, Slack debate, but no final reason.
+User asks: "Why did I stop working on the newsletter?"
+System finds: fewer commits, old notes, and a calendar conflict, but no explicit reason.
 Action: answer with uncertainty and create a `clarify_rationale` question.
 ```
 
 ```text
-User asks: "Who owns the billing API?"
-System finds: three possible owners from different sources.
-Action: return candidates with evidence and create a `confirm_owner` question.
+User asks: "Do I like long-form explanations?"
+System finds: old preference for concise answers and recent requests for detailed specs.
+Action: return both with evidence and create a `confirm_preference` question.
 ```
 
 Retrieval can therefore be both an answer path and a memory-improvement path.
 
-### 12.7 Answer Contract
+### 12.6 Answer Contract
 
 Every generated answer should include:
 
@@ -893,61 +897,61 @@ Every generated answer should include:
 - Evidence references.
 - Confidence level.
 - Freshness or last-confirmed time.
-- Whether the answer is observed, inferred, disputed, or unknown.
+- Whether the memory is observed, inferred, confirmed, sensitive, stale, or unknown.
 - Open questions or missing context when relevant.
 
-The answer generator should refuse to present unsupported inferred claims as facts.
+The answer generator should refuse to present unsupported inferred memories as facts.
 
 ## 13. Core Product Interfaces
 
-### 13.1 Admin Connector Console
+### 13.1 Source Console
 
 Purpose:
 
 - Add connectors.
 - Configure sync scope.
-- Configure permissions.
+- Configure memory scopes.
 - Monitor sync status.
-- Pause/revoke sources.
+- Pause or revoke sources.
 
-### 13.2 Knowledge Search
+### 13.2 Memory Search
 
 Purpose:
 
-- Search across company memory.
-- Use the agentic retrieval layer to combine semantic, lexical, graph, structured, audit-history, and permission-aware retrieval.
+- Search across personal memory.
+- Use the agentic retrieval layer to combine semantic, lexical, graph, structured, audit-history, and scope-aware retrieval.
 - Always show evidence.
-- Show confidence, freshness, and uncertainty state.
+- Show confidence, freshness, and memory state.
 - Create follow-up questions when important context is missing.
 
-### 13.3 Ask-Back Inbox
+### 13.3 Memory Inbox
 
 Purpose:
 
-- Show questions that need human confirmation.
-- Let users confirm, edit, reject, or delegate.
+- Show questions that need user confirmation.
+- Let the user confirm, edit, reject, archive, or forget.
 - Keep answers lightweight.
 
-### 13.4 Decision Log
+### 13.4 Project Memory Page
 
 Purpose:
 
-- Show accepted decisions.
-- Show rationale, evidence, owner, superseded decisions, and open gaps.
+- Summarize a project from accepted memory graph state.
+- Include goals, decisions, open loops, notes, related files, people, risks, and recent changes.
 
-### 13.5 Project Memory Page
-
-Purpose:
-
-- Summarize a project from accepted graph state.
-- Include owners, goals, status, decisions, open questions, risks, and recent changes.
-
-### 13.6 Agent Context API
+### 13.5 Timeline
 
 Purpose:
 
-- Allow other AI agents to retrieve trustworthy context.
-- Return structured knowledge packages with evidence, confidence, freshness, uncertainty, and permission-aware summaries.
+- Show memories, decisions, projects, and commitments over time.
+- Support "what changed?" and "what was I thinking then?" questions.
+
+### 13.6 Assistant Context API
+
+Purpose:
+
+- Allow an AI assistant to retrieve trustworthy context.
+- Return structured memory packages with evidence, confidence, freshness, uncertainty, and memory scopes.
 
 ## 14. MVP Workflow
 
@@ -955,29 +959,31 @@ Purpose:
 
 Start with:
 
-- Slack connector.
+- Manual memory capture.
 - File upload.
-- GitHub connector.
-- Manual answer flow.
+- Notes import.
+- Calendar import.
+- Simple browser/bookmark import.
+- User answer flow.
 
 This gives enough signal to test the full loop:
 
 ```text
-Conversation -> document/code change -> inferred decision gap -> human confirmation -> accepted memory
+Notes/files/calendar -> inferred memory gap -> user confirmation -> accepted memory
 ```
 
 ### 14.2 MVP End-to-End Flow
 
 ```text
-Admin connects Slack channel and GitHub repo
--> System backfills selected history
--> Agents create source, message, thread, PR, person, project nodes
--> Agents extract candidate claims and decisions
--> System detects uncertain decision
--> Question appears in ask-back inbox
--> Human confirms final decision and rationale
--> System creates accepted Decision node
--> Project memory page updates
+User imports notes and files
+-> System chunks and indexes selected sources
+-> Agents create source, document, project, goal, preference, and question nodes
+-> Agents extract candidate memories and decisions
+-> System detects uncertain long-term memory
+-> Question appears in memory inbox
+-> User confirms or edits the memory
+-> System creates accepted memory assertion
+-> Project or preference page updates
 -> Search can now answer with evidence and audit trail
 ```
 
@@ -986,76 +992,77 @@ Admin connects Slack channel and GitHub repo
 The demo should answer:
 
 ```text
-What did we decide about billing migration?
-Who owns the current implementation?
-Which Slack thread and PR led to this?
-What is still uncertain?
-What changed since last week?
+What am I working on?
+What did I decide about open-Memory?
+What preferences should my assistant know?
+What commitments are open?
+What has gone stale?
+Why does the system remember this?
+What should it ask me before storing?
 ```
 
 ## 15. Implementation Phases
 
-### Phase 1: Local Knowledge Core
+### Phase 1: Local Personal Memory Core
 
 Build:
 
 - PostgreSQL schema.
-- Node/assertion/evidence/patch/audit tables.
+- Node/assertion/evidence/patch/audit/scope tables.
 - Agent run and private memory tables.
+- Manual memory capture.
 - File upload ingestion.
 - Basic embeddings.
 - Manual patch approval.
+- Basic retrieval planner.
 - Simple search and evidence viewer.
-- Basic retrieval planner that can choose graph, vector, lexical, and evidence lookups.
 
 Exit criteria:
 
-- A file can be uploaded.
+- A file or manual memory can be added.
 - Candidate nodes and assertions are proposed.
-- Unsupported claims are rejected.
-- Accepted claims can explain their evidence.
-- Retrieval returns a structured knowledge package, not only raw chunks.
+- Unsupported memories are rejected.
+- Accepted memories can explain their evidence.
+- Retrieval returns a structured memory package, not only raw chunks.
 - Agent runs are logged and can store private correction memories.
 
-### Phase 2: Slack + Ask-Back Loop
+### Phase 2: Notes + Calendar + Ask-Back Loop
 
 Build:
 
-- Slack connector.
-- Thread/message normalization.
-- Person and channel nodes.
-- Decision gap detection.
-- Ask-back inbox.
-- Human answer to graph patch flow.
+- Notes import.
+- Calendar import.
+- Event, project, goal, and commitment extraction.
+- Memory inbox.
+- User answer to graph patch flow.
 - Retrieval-time question creation when important context is missing.
-- Human feedback can update the relevant agent's private memory.
 
 Exit criteria:
 
-- A Slack thread can produce a question.
-- A human answer can create or update a Decision node.
-- The decision is visible with evidence and audit history.
-- A query with ambiguous evidence can generate a routed ask-back question.
+- A note or calendar event can produce a question.
+- A user answer can create or update a memory.
+- The memory is visible with evidence and audit history.
+- A query with ambiguous evidence can generate an ask-back question.
 - Repeated rejected proposals make the agent more conservative in future runs.
 
-### Phase 3: GitHub + Project Memory
+### Phase 3: Browser + Email + Personal Project Memory
 
 Build:
 
-- GitHub connector.
-- PR/issue/code reference nodes.
-- Link PRs to decisions and projects.
+- Browser/bookmark import.
+- Email import with conservative sensitivity defaults.
+- Relationship and commitment nodes.
 - Project memory page.
 - "What changed?" report.
-- Audit-history retrieval for timeline and change questions.
+- Audit-history retrieval for timeline questions.
 
 Exit criteria:
 
-- A PR can be linked to a decision or decision gap.
-- A project page shows owners, decisions, open questions, and recent changes.
-- Retrieval can answer "what changed?" from audit events and graph state.
+- A project page shows goals, decisions, open loops, files, people, and recent changes.
+- Retrieval can answer "what changed?" from audit events and memory graph state.
+- Sensitive email-derived memory is not used proactively without confirmation.
 
-### Phase 4: Database and External API Connectors
+### Phase 4: External APIs and Structured Data
 
 Build:
 
@@ -1063,65 +1070,67 @@ Build:
 - External API connector framework.
 - Schema discovery for tables/API responses.
 - Storage bindings for structured data.
+- Optional health/finance connectors with stricter scope controls.
 
 Exit criteria:
 
-- A database table can be represented as a node with storage bindings.
-- Agents can create claims from structured records with evidence pointers.
+- A structured source can be represented as a node with storage bindings.
+- Agents can create memories from structured records with evidence pointers.
+- Sensitive structured data defaults to restricted use.
 
-### Phase 5: Governance and Scale
+### Phase 5: Privacy and Scale
 
 Build:
 
-- Advanced permissions.
+- Stronger encryption.
+- Advanced forgetting.
 - Sensitive data detection.
 - Contradiction agent.
 - Freshness agent.
-- Admin audit reports.
-- Connector monitoring.
+- Local-first mode investigation.
+- Memory export/import.
 
 Exit criteria:
 
-- The system can safely operate across multiple teams with restricted data.
-- Sensitive knowledge does not leak through derived summaries.
+- The user can inspect, correct, archive, and forget memories.
+- Forgotten memory is excluded from retrieval and assistant context.
+- Sensitive memory does not leak through derived summaries.
 
 ## 16. Key Technical Decisions
 
 ### 16.1 PostgreSQL-First
 
-Start with PostgreSQL and pgvector. This reduces operational complexity and is enough to prove the knowledge model.
+Start with PostgreSQL and pgvector. This reduces operational complexity and is enough to prove the memory model.
 
-Add Neo4j later only if graph traversal becomes a bottleneck or product workflows need advanced graph analytics.
+Add a graph database later only if graph traversal becomes a bottleneck or product workflows need advanced graph analytics.
 
 ### 16.2 Patch-Based Mutation
 
 Agents should submit patches. Validators apply accepted patches.
 
-This keeps the graph auditable and prevents agents from silently corrupting accepted state.
+This keeps memory auditable and prevents agents from silently corrupting accepted state.
 
-### 16.3 Strict Permission Inheritance
+### 16.3 User-Controlled Memory Scope
 
-For MVP, derived assertions inherit the most restrictive permission among their evidence.
+Every memory should have a use scope. The system should distinguish "remember for assistant behavior" from "keep for search only" and "private, do not use."
 
-This avoids accidental leakage from private channels, emails, and restricted documents.
+### 16.4 User Questions Are First-Class
 
-### 16.4 Human Questions Are First-Class
+Questions are not notifications. They are graph nodes with evidence, lifecycle, and audit history.
 
-Questions are not notifications. They are graph nodes with evidence, routing, lifecycle, and audit history.
-
-This lets the system model missing knowledge explicitly.
+This lets the system model missing personal context explicitly.
 
 ### 16.5 Retrieval Is Agentic
 
 Retrieval should be implemented as a planner-driven agent workflow, not a single query against a vector store.
 
-The retrieval agent should produce structured knowledge packages and should be able to create follow-up questions when retrieval exposes missing or disputed context.
+The retrieval agent should produce structured memory packages and should be able to create follow-up questions when retrieval exposes missing or disputed context.
 
 ### 16.6 Agent Memory Is Separate
 
-Agent private memory should improve agent performance without becoming organizational truth.
+Agent private memory should improve agent performance without becoming personal truth.
 
-It should be scoped, inspectable, deletable, and unable to serve as evidence for accepted company assertions.
+It should be scoped, inspectable, deletable, and unable to serve as evidence for accepted personal memories.
 
 ## 17. Risks and Mitigations
 
@@ -1129,57 +1138,58 @@ It should be scoped, inspectable, deletable, and unable to serve as evidence for
 
 Risk:
 
-The system annoys users by asking about every small uncertainty.
+The system annoys the user by asking about every small uncertainty.
 
 Mitigation:
 
 - Prioritize by impact.
 - Batch low-priority questions.
-- Route only to likely owners.
-- Use confidence and blast-radius thresholds.
+- Learn which question formats the user answers.
+- Use confidence and memory-importance thresholds.
 
 ### 17.2 False Confidence
 
 Risk:
 
-The graph presents inferred claims as facts.
+The graph presents inferred memories as facts.
 
 Mitigation:
 
-- Separate observed, inferred, disputed, and unknown states.
+- Separate observed, inferred, confirmed, sensitive, stale, and unknown states.
 - Display confidence and evidence.
-- Require human confirmation for important decisions.
+- Require user confirmation for important personal memories.
 
-### 17.3 Permission Leakage
+### 17.3 Privacy Leakage
 
 Risk:
 
-Private source data leaks through summaries or derived claims.
+Private source data leaks through summaries, personalization, or derived memories.
 
 Mitigation:
 
-- Strict permission inheritance.
+- Strict memory scopes.
 - Sensitivity tagging.
 - Evidence-aware answer generation.
-- Audit logs for every answer.
+- Audit logs for memory use.
+- Conservative defaults for email, health, finance, and private chats.
 
 ### 17.4 Connector Complexity
 
 Risk:
 
-Every external system has different APIs, permissions, and rate limits.
+Every personal source has different APIs, export formats, permissions, and rate limits.
 
 Mitigation:
 
 - Build a common connector contract.
-- Start with a small connector set.
+- Start with manual capture, files, notes, calendar, and bookmarks.
 - Treat connector health as a product surface.
 
-### 17.5 Stale Knowledge
+### 17.5 Stale Memory
 
 Risk:
 
-Old decisions and owners remain visible as current.
+Old preferences, goals, and relationships remain visible as current.
 
 Mitigation:
 
@@ -1192,12 +1202,12 @@ Mitigation:
 
 Risk:
 
-The answer generator uses retrieved snippets to produce a confident answer that is not supported by accepted assertions or evidence.
+The answer generator uses retrieved snippets to produce a confident answer that is not supported by accepted memories or evidence.
 
 Mitigation:
 
 - Require answers to cite evidence-backed assertions.
-- Run answer verification against the knowledge package.
+- Run answer verification against the memory package.
 - Label inferred answers clearly.
 - Prefer "unknown" plus ask-back over unsupported certainty.
 
@@ -1205,50 +1215,49 @@ Mitigation:
 
 Risk:
 
-An agent private memory accidentally stores sensitive company facts or leaks patterns across organizations.
+An agent private memory accidentally stores sensitive personal facts or leaks patterns across users.
 
 Mitigation:
 
-- Scope memories to one organization by default.
+- Scope memories to one user by default.
 - Strip raw source content from distilled memories.
 - Use sensitivity tags and retention policies.
-- Let admins inspect and delete agent memories.
-- Prohibit agent memories from serving as evidence in the company graph.
+- Let the user inspect and delete agent memories.
+- Prohibit agent memories from serving as evidence in the personal graph.
 
 ## 18. Open Questions
 
-- Should the first target user be engineering teams, founder teams, or research teams?
-- Should Slack ingestion include DMs, or only public/private channels explicitly selected by admins?
-- Should users answer questions in Slack, email, or inside the app first?
-- What is the minimum useful ontology for company decisions?
-- How should the system choose the best human to ask?
-- What should happen when a human answer conflicts with source evidence?
-- Should accepted decisions require one approver or multiple approvers?
-- How should source deletion affect derived accepted knowledge?
+- Should the first version be local-first or cloud-first?
+- Which source should be the first real connector after manual/file import: notes, calendar, email, or browser?
+- Should the assistant proactively ask questions daily, weekly, or only when queried?
+- What is the minimum useful ontology for personal memory?
+- Which memories should require explicit confirmation before storage?
+- How should source deletion affect derived accepted memories?
 - How much autonomy should retrieval agents have to create ask-back questions?
-- Should retrieval plans be visible to users for debugging trust?
+- Should retrieval plans be visible to the user for debugging trust?
 - What should the default retention period be for agent private memories?
-- Which agent memories can be shared across agents inside the same organization?
-- Should admins be able to disable agent learning per connector or source type?
+- Which personal memory types should default to `search_only`?
 
 ## 19. First Build Recommendation
 
-Build the MVP around engineering/product team memory:
+Build the MVP around personal project and preference memory:
 
 ```text
-Slack + GitHub + file uploads + human ask-back
+Manual capture + file upload + notes import + calendar import + user ask-back
 ```
 
-This domain has enough observable signal to prove the concept:
+This domain has enough signal to prove the concept:
 
-- Slack contains messy decision discussion.
-- GitHub contains actual implementation.
-- Files contain official docs.
-- Humans can confirm the missing rationale.
+- Notes contain goals, ideas, decisions, and project context.
+- Files contain durable artifacts.
+- Calendar contains time and commitments.
+- User confirmation resolves uncertainty.
 
 The first strong user experience should be:
 
 ```text
-"Show me what we know about this project, what changed recently,
-what decisions were made, and what the system is still unsure about."
+"Show me what I am working on, what I decided,
+what I promised, what has gone stale,
+and what you need to ask me before remembering."
 ```
+

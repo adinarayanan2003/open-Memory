@@ -848,7 +848,7 @@ Mitigation:
 
 - Should claims be modeled as nodes, assertions, or both?
 - What is the minimum useful schema for the first domain?
-- Which domain should be used for the MVP: personal memory, codebase knowledge, research papers, or company docs?
+- Which personal-memory domain should be used for the MVP: projects, preferences, commitments, notes, or calendar?
 - What confidence thresholds should require human review?
 - Should the graph store be PostgreSQL-first or Neo4j-first?
 - How should agents be evaluated over time?
@@ -857,34 +857,34 @@ Mitigation:
 
 ## 15. Suggested First Build
 
-Build a local-first prototype for one domain, such as research notes or codebase documentation.
+Build a local-first prototype for personal project and preference memory.
 
 Phase 1:
 
-- Define schema for `Source`, `Document`, `Chunk`, `Concept`, `Claim`, and `Question`.
-- Store raw documents locally.
+- Define schema for `Source`, `Document`, `Chunk`, `Project`, `Preference`, `Decision`, `OpenLoop`, `Claim`, and `Question`.
+- Store raw documents locally when retention policy allows it.
 - Store nodes/assertions/audit events in PostgreSQL.
 - Store embeddings with pgvector.
 - Implement patch submission and validation.
 
 Phase 2:
 
-- Add ingestion from Markdown/PDF/text.
-- Extract candidate concepts and claims.
+- Add ingestion from Markdown/PDF/text notes and manual memory capture.
+- Extract candidate projects, preferences, decisions, commitments, and claims.
 - Attach evidence to assertions.
-- Build a patch review CLI or small web UI.
+- Build a memory inbox CLI or small web UI for user confirmation.
 
 Phase 3:
 
-- Generate LLM Wiki-style Markdown pages from accepted graph state.
-- Add "why do we believe this?" queries.
-- Add contradiction detection.
+- Generate personal memory pages from accepted graph state.
+- Add "why do you remember this?" queries.
+- Add preference and decision contradiction detection.
 
 Phase 4:
 
-- Add storage bindings for structured datasets.
+- Add calendar, browser/bookmark, and structured-data storage bindings.
 - Add freshness tracking.
-- Add graph visualization.
+- Add memory timeline and graph visualization.
 - Add multi-agent maintenance loop.
 
 ## 16. Success Criteria
@@ -901,4 +901,5 @@ The system is working when it can:
 - Detect at least simple contradictions.
 - Generate a readable knowledge projection.
 - Route different node payloads to appropriate storage backends.
-
+- Ask the user before promoting uncertain or sensitive memories.
+- Forget, archive, or restrict memories according to user-controlled scope.
