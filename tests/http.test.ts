@@ -21,4 +21,26 @@ describe("HTTP API", () => {
     expect(body.job.id).toBeTruthy();
     await app.close();
   });
+
+  it("lists jobs through the API", async () => {
+    const { app } = await buildServer({ store: new InMemoryStore() });
+    await app.inject({
+      method: "POST",
+      url: "/sources/manual",
+      payload: {
+        userId: "user",
+        title: "Current work",
+        text: "I am working on open-Memory and building a backend memory engine."
+      }
+    });
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/jobs?limit=10"
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().length).toBeGreaterThan(0);
+    await app.close();
+  });
 });

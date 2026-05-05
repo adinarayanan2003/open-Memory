@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import type { MemoryEngine } from "../engine/memory-engine.js";
-import type { InProcessJobQueue } from "../queue/job-queue.js";
+import type { JobListStatus, MemoryJobQueue } from "../queue/job-queue.js";
 import {
   answerQuestionSchema,
   createJobSchema,
@@ -9,7 +9,7 @@ import {
   memoryQuerySchema
 } from "./schemas.js";
 
-export async function registerRoutes(app: FastifyInstance, engine: MemoryEngine, queue: InProcessJobQueue) {
+export async function registerRoutes(app: FastifyInstance, engine: MemoryEngine, queue: MemoryJobQueue) {
   app.get("/health", async () => ({ ok: true }));
 
   app.post("/sources/manual", async (request) => {
@@ -51,6 +51,14 @@ export async function registerRoutes(app: FastifyInstance, engine: MemoryEngine,
     const job = await queue.get(id);
     if (!job) return app.httpErrors.notFound("Job not found");
     return job;
+  });
+
+  app.get("/jobs", async (request) => {
+    const query = request.query as { status?: JobListStatus; limit?: string };
+    return queue.list({
+      status: query.status,
+      limit: query.limit ? Number(query.limit) : undefined
+    });
   });
 
   app.get("/nodes", async () => engine.store.listNodes());
@@ -112,4 +120,3 @@ export async function registerRoutes(app: FastifyInstance, engine: MemoryEngine,
   app.get("/agents/runs", async () => engine.store.listAgentRuns());
   app.get("/agents/memory", async () => engine.store.listAgentMemories());
 }
-

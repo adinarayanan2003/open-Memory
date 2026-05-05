@@ -12,6 +12,8 @@ This repo currently implements a local TypeScript backend with:
 - Agent pipeline for ingestion, extraction, graph patching, validation, maintenance, retrieval, and private agent memory.
 - Patch-based memory mutation with audit events.
 - Prisma-backed PostgreSQL persistence by default.
+- Durable Redis/BullMQ job runtime with a separate worker process.
+- Scheduled maintenance jobs for freshness, contradiction, and evidence integrity.
 - In-memory store for isolated unit tests and explicit `MEMORY_STORE=memory` development.
 - Prisma migration for the persistent schema.
 
@@ -20,9 +22,10 @@ This repo currently implements a local TypeScript backend with:
 ```mermaid
 flowchart TD
   User[User or assistant] --> API[HTTP API]
-  API --> Engine[MemoryEngine]
-  Engine --> Queue[Job queue facade]
-  Queue --> Ingestion[IngestionAgent]
+  API --> Queue[Redis/BullMQ queue]
+  Worker[Worker process] --> Queue
+  Worker --> Engine[MemoryEngine]
+  Engine --> Ingestion[IngestionAgent]
   Ingestion --> Extraction[ExtractionAgent]
   Extraction --> Graph[GraphAgent]
   Graph --> Validation[Validation policy]
@@ -63,6 +66,8 @@ Important separation:
 ```mermaid
 sequenceDiagram
   participant API
+  participant Queue
+  participant Worker
   participant Engine
   participant IngestionAgent
   participant ExtractionAgent
@@ -72,7 +77,9 @@ sequenceDiagram
 
   API->>Engine: create source
   Engine->>Store: SourceConnection + SourceRecord
-  API->>Engine: enqueue extraction job
+  API->>Queue: enqueue durable job in Redis
+  Worker->>Queue: claim job
+  Worker->>Engine: process extraction job
   Engine->>IngestionAgent: chunk source + create evidence
   IngestionAgent->>Store: chunks + evidence
   Engine->>ExtractionAgent: extract candidates
@@ -95,6 +102,7 @@ POST /sources/notes/import
 
 POST /ingestion/jobs
 GET  /jobs/:id
+GET  /jobs?status=waiting|active|completed|failed|delayed&limit=50
 
 GET  /nodes
 GET  /assertions
@@ -126,23 +134,29 @@ Create environment config:
 cp .env.example .env
 ```
 
-Start Postgres and run migrations:
+Start Postgres and Redis, then run migrations:
 
 ```bash
-docker compose up -d postgres
+docker compose up -d postgres redis
 npm run db:migrate
 ```
 
-Start the backend:
+Start the API:
 
 ```bash
 npm run dev
 ```
 
-The default runtime store is Prisma/PostgreSQL. For a temporary non-persistent runtime:
+Start the worker in a second terminal:
 
 ```bash
-MEMORY_STORE=memory npm run dev
+npm run worker
+```
+
+The default runtime uses Prisma/PostgreSQL and Redis/BullMQ. For a temporary non-persistent runtime:
+
+```bash
+MEMORY_STORE=memory JOB_QUEUE=memory npm run dev
 ```
 
 ## API Smoke Test
@@ -176,6 +190,13 @@ curl http://127.0.0.1:3000/patches?status=needs_review
 curl http://127.0.0.1:3000/questions?status=open
 ```
 
+Inspect jobs:
+
+```bash
+curl http://127.0.0.1:3000/jobs?status=completed
+curl http://127.0.0.1:3000/jobs?status=failed
+```
+
 ## Development Commands
 
 ```bash
@@ -185,12 +206,13 @@ npm run build
 npm audit
 ```
 
-Database-backed tests require Postgres from `.env`:
+Database-backed and queue-backed tests require local services from `.env`:
 
 ```bash
-docker compose up -d postgres
+docker compose up -d postgres redis
 npm run db:migrate
 npm run test:db
+npm run test:queue
 ```
 
 Prisma commands:
@@ -208,7 +230,7 @@ src/agents/          agent services for ingestion, extraction, graph updates, ma
 src/domain/          shared memory types and policies
 src/engine/          MemoryEngine orchestration
 src/http/            Fastify routes and request schemas
-src/queue/           in-process job queue facade
+src/queue/           in-process test queue, BullMQ queue, worker, scheduler, dispatcher
 src/repositories/    MemoryStore interface, in-memory store, Prisma store
 prisma/              schema and migrations
 tests/               unit and DB integration tests
@@ -227,15 +249,13 @@ tests/               unit and DB integration tests
 
 Near-term backend work:
 
-- Replace the in-process queue with a durable Redis/BullMQ worker runtime.
 - Add real embedding generation and pgvector similarity search.
 - Add stronger extraction providers behind a deterministic adapter.
 - Add source connectors beyond manual/files/notes.
 - Add migration-safe seed and fixture workflows for DB tests.
-- Expand maintenance agents for freshness, contradiction, and evidence integrity.
+- Expand maintenance agents beyond initial freshness, contradiction, and evidence integrity sweeps.
 
 ## Documents
 
 - [Agentic Knowledge Graph Spec](AGENTIC_KNOWLEDGE_GRAPH_SPEC.md)
 - [System Design Plan: Personal Long-Term Memory](SYSTEM_DESIGN_PLAN.md)
-
