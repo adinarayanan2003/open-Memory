@@ -1,0 +1,232 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum SourceConnectionType {
+  manual
+  file_upload
+  notes
+}
+
+enum SyncMode {
+  one_time
+  scheduled
+  webhook
+  continuous
+}
+
+enum ConnectionStatus {
+  active
+  paused
+  error
+  revoked
+}
+
+enum MemoryState {
+  observed
+  inferred
+  confirmed
+  sensitive
+  stale
+  forgotten
+}
+
+enum MemoryScope {
+  available_to_assistant
+  search_only
+  only_when_explicitly_asked
+  private_do_not_use
+  time_limited
+  forgotten
+}
+
+enum PatchStatus {
+  pending
+  accepted
+  rejected
+  needs_review
+}
+
+enum AssertionStatus {
+  proposed
+  accepted
+  rejected
+  superseded
+  contradicted
+}
+
+enum AgentRunStatus {
+  queued
+  running
+  succeeded
+  failed
+  partial
+  blocked
+}
+
+model User {
+  id        String   @id
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model SourceConnection {
+  id                  String               @id
+  type                SourceConnectionType
+  displayName         String
+  ownerUserId         String
+  syncMode            SyncMode
+  memoryScopePolicyId String
+  retentionPolicyId   String
+  status              ConnectionStatus
+  lastSyncedAt        DateTime?
+  createdAt           DateTime             @default(now())
+}
+
+model SourceRecord {
+  id              String   @id
+  connectionId    String
+  sourceType      String
+  externalId      String
+  title           String?
+  author          String?
+  participants    String[]
+  contentType     String
+  rawObjectRef    String?
+  text            String
+  memoryScopeTags String[]
+  sensitivityTags String[]
+  metadata        Json
+  createdAtSource DateTime?
+  updatedAtSource DateTime?
+  fetchedAt       DateTime @default(now())
+}
+
+model Chunk {
+  id             String   @id
+  sourceRecordId String
+  text           String
+  ordinal        Int
+  metadata       Json
+  createdAt      DateTime @default(now())
+}
+
+model Node {
+  id             String   @id
+  type           String
+  label          String
+  summary        String?
+  attributes     Json
+  memoryState    MemoryState
+  memoryScope    MemoryScope
+  currentVersion String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model Evidence {
+  id        String   @id
+  type      String
+  sourceId  String
+  locator   String
+  quote     String?
+  metadata  Json
+  createdAt DateTime @default(now())
+}
+
+model Assertion {
+  id              String          @id
+  subjectNodeId   String
+  predicate       String
+  objectNodeId    String?
+  literalValue    Json?
+  qualifiers      Json
+  evidenceIds     String[]
+  confidence      Float
+  status          AssertionStatus
+  memoryState     MemoryState
+  memoryScope     MemoryScope
+  createdBy       String
+  acceptedBy      String?
+  currentVersion  String
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+}
+
+model GraphPatch {
+  id                String      @id
+  proposedBy        String
+  reason            String
+  operations        Json
+  evidenceIds       String[]
+  confidence        Float
+  sensitivity       String
+  suggestedScope    MemoryScope
+  validationResults Json
+  status            PatchStatus
+  createdAt         DateTime    @default(now())
+  resolvedAt        DateTime?
+}
+
+model Question {
+  id             String   @id
+  questionKind   String
+  prompt         String
+  relatedNodeIds String[]
+  evidenceIds    String[]
+  priority       String
+  status         String
+  createdBy      String
+  createdAt      DateTime @default(now())
+}
+
+model AuditEvent {
+  id        String   @id
+  eventType String
+  actorId   String
+  patchId   String?
+  targetIds String[]
+  reason    String?
+  metadata  Json
+  createdAt DateTime @default(now())
+}
+
+model AgentRun {
+  id                String         @id
+  agentId           String
+  userId            String
+  taskType          String
+  inputRefs         String[]
+  outputPatchIds    String[]
+  questionIds       String[]
+  toolsUsed         String[]
+  modelVersion      String?
+  promptVersion     String?
+  policyVersion     String
+  status            AgentRunStatus
+  errorSummary      String?
+  evaluatorFeedback String?
+  startedAt         DateTime
+  finishedAt        DateTime?
+}
+
+model AgentMemoryRecord {
+  id               String   @id
+  agentId          String
+  userId           String
+  memoryKind       String
+  summary          String
+  sourceRunIds     String[]
+  relatedPolicyIds String[]
+  scope            String
+  sensitivity      String
+  expiresAt        DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
