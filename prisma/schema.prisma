@@ -86,6 +86,9 @@ model SourceConnection {
   status              ConnectionStatus
   lastSyncedAt        DateTime?
   createdAt           DateTime             @default(now())
+
+  @@index([ownerUserId])
+  @@index([status])
 }
 
 model SourceRecord {
@@ -105,6 +108,9 @@ model SourceRecord {
   createdAtSource DateTime?
   updatedAtSource DateTime?
   fetchedAt       DateTime @default(now())
+
+  @@index([connectionId])
+  @@index([sourceType])
 }
 
 model Chunk {
@@ -114,6 +120,8 @@ model Chunk {
   ordinal        Int
   metadata       Json
   createdAt      DateTime @default(now())
+
+  @@index([sourceRecordId])
 }
 
 model Node {
@@ -127,6 +135,10 @@ model Node {
   currentVersion String
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+
+  @@index([type, label])
+  @@index([memoryState])
+  @@index([memoryScope])
 }
 
 model Evidence {
@@ -137,6 +149,9 @@ model Evidence {
   quote     String?
   metadata  Json
   createdAt DateTime @default(now())
+
+  @@index([sourceId])
+  @@index([type])
 }
 
 model Assertion {
@@ -156,6 +171,12 @@ model Assertion {
   currentVersion  String
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
+
+  @@index([subjectNodeId])
+  @@index([objectNodeId])
+  @@index([status])
+  @@index([memoryState])
+  @@index([memoryScope])
 }
 
 model GraphPatch {
@@ -171,6 +192,9 @@ model GraphPatch {
   status            PatchStatus
   createdAt         DateTime    @default(now())
   resolvedAt        DateTime?
+
+  @@index([status])
+  @@index([createdAt])
 }
 
 model Question {
@@ -183,6 +207,9 @@ model Question {
   status         String
   createdBy      String
   createdAt      DateTime @default(now())
+
+  @@index([status])
+  @@index([questionKind])
 }
 
 model AuditEvent {
@@ -194,6 +221,10 @@ model AuditEvent {
   reason    String?
   metadata  Json
   createdAt DateTime @default(now())
+
+  @@index([patchId])
+  @@index([eventType])
+  @@index([createdAt])
 }
 
 model AgentRun {
@@ -213,6 +244,10 @@ model AgentRun {
   evaluatorFeedback String?
   startedAt         DateTime
   finishedAt        DateTime?
+
+  @@index([userId])
+  @@index([taskType])
+  @@index([status])
 }
 
 model AgentMemoryRecord {
@@ -228,5 +263,8 @@ model AgentMemoryRecord {
   expiresAt        DateTime?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
-}
 
+  @@index([userId])
+  @@index([agentId])
+  @@index([memoryKind])
+}

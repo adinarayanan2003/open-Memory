@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { buildServer } from "../src/server.js";
+import { InMemoryStore } from "../src/repositories/in-memory-store.js";
 
 describe("HTTP API", () => {
   it("creates a manual source and schedules extraction", async () => {
-    const { app } = await buildServer();
+    const { app } = await buildServer({ store: new InMemoryStore() });
     const response = await app.inject({
       method: "POST",
       url: "/sources/manual",
@@ -21,4 +22,3 @@ describe("HTTP API", () => {
     await app.close();
   });
 });
-

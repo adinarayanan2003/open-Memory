@@ -11,14 +11,24 @@ The current implementation is a local TypeScript backend with:
 - HTTP API for source ingestion, jobs, patches, questions, retrieval, and forgetting.
 - Agent pipeline for ingestion, extraction, node allocation, assertion proposal, validation, maintenance, retrieval, and private agent memory.
 - Patch-based memory mutation with audit events.
-- PostgreSQL + pgvector Prisma schema and Docker Compose storage contract.
-- In-memory runtime store for fast local development and tests.
+- Prisma-backed PostgreSQL persistence by default.
+- In-memory store for isolated unit tests and explicit `MEMORY_STORE=memory` development.
+- Docker Compose storage contract for local Postgres.
 
 ## Run
 
 ```bash
 npm install --cache /tmp/open-memory-npm-cache
+cp .env.example .env
+docker compose up -d postgres
+npm run db:migrate
 npm run dev
+```
+
+For a temporary non-persistent runtime:
+
+```bash
+MEMORY_STORE=memory npm run dev
 ```
 
 Health check:
@@ -48,8 +58,12 @@ Run checks:
 ```bash
 npm run typecheck
 npm test
+npm run test:db
 npm run build
+npm audit
 ```
+
+`npm run test:db` requires a reachable Postgres database from `.env` or the default `.env.example` URL.
 
 ## Documents
 
